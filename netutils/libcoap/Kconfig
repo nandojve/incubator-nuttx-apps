@@ -1,0 +1,30 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NETUTILS_LIBCOAP
+	bool "libCoAP (current version)"
+	default n
+	select NET
+	select NET_UDP
+	---help---
+		Enable support for the libcoap library 
+
+if NETUTILS_LIBCOAP
+
+config NETUTILS_LIBCOAP_URL
+	string "URL where libCoAP library can be downloaded"
+	default "https://github.com/obgm/libcoap/archive"
+
+config NETUTILS_LIBCOAP_VERSION
+	string "Version number"
+	default "4.3.0"
+
+config NETUTILS_LIBCOAP_DEBUG
+	bool "Enable CoAP Debugging Log"
+	default y
+	---help---
+		Enables CoAP logs
+
+endif
