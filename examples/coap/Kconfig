@@ -1,0 +1,23 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_COAP
+	tristate "CoAP Server/Client"
+	default n
+	select NETUTILS_LIBCOAP
+	---help---
+		Enable the CoAP Server/Client example
+
+if EXAMPLES_COAP
+
+config EXAMPLES_COAP_PRIORITY
+	int "Coap Server/Client task priority"
+	default 100
+
+config EXAMPLES_COAP_STACKSIZE
+	int "CoAP Server/Client stack size"
+	default 8192
+
+endif
