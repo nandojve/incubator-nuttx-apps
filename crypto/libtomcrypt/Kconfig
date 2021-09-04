@@ -22,6 +22,7 @@ config LIBTOMCRYPT_VERSION
 
 menuconfig LIBTOMCRYPT_DEMOS
 	bool "LibTomCrypt Library Demos"
+	select SCHED_ATEXIT
 	default n
 	---help---
 		LibTomCrypt demo and test applications.
@@ -41,6 +42,12 @@ config LIBTOMCRYPT_LTCRYPT_PROGNAME
         default "ltcrypt"
         ---help---
                 LibTomMath ltcrypt application name
+
+config LIBTOMCRYPT_HASHSUM_PROGNAME
+        string "hashsum program name"
+        default "hashsum"
+        ---help---
+                LibTomMath hashsum application name
 
 config LIBTOMCRYPT_LTCRYPT_PRIORITY
         int "ltcrypt application priority"

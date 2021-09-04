@@ -1,0 +1,11 @@
+--- libtomcrypt/demos/hashsum.c	    2018-07-01 17:49:01.000000000 -0300
++++ libtomcrypt/demos/hashsum.c.new 2021-09-04 18:58:18.640708606 -0300
+@@ -172,7 +172,7 @@
+    exit(EXIT_SUCCESS);
+ }
+ 
+-int main(int argc, char **argv)
++int main(int argc, char *argv[])
+ {
+    int idxs[TAB_SIZE], idx, check, y, z, err, argn;
+    unsigned long w, x;

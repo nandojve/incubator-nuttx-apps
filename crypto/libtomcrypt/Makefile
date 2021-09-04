@@ -185,9 +185,9 @@ CFLAGS += -Wno-deprecated-declarations
 ifneq ($(CONFIG_LIBTOMCRYPT_DEMOS),)
 
 ifneq ($(CONFIG_LIBTOMCRYPT_LTCRYPT),)
-MAINSRC += libtomcrypt/demos/ltcrypt.c
+MAINSRC += libtomcrypt/demos/ltcrypt.c libtomcrypt/demos/hashsum.c
 
-PROGNAME += $(CONFIG_LIBTOMCRYPT_LTCRYPT_PROGNAME)
+PROGNAME += $(CONFIG_LIBTOMCRYPT_LTCRYPT_PROGNAME) $(CONFIG_LIBTOMCRYPT_HASHSUM_PROGNAME)
 PRIORITY += $(CONFIG_LIBTOMCRYPT_LTCRYPT_PRIORITY)
 STACKSIZE += $(CONFIG_LIBTOMCRYPT_LTCRYPT_STACKSIZE)
 endif
@@ -213,6 +213,7 @@ $(LIBTOMCRYPT_UNPACKNAME): $(LIBTOMCRYPT_ZIP)
 	$(Q) echo "Patching $(LIBTOMCRYPT_UNPACKNAME)"
 	$(Q) patch -p0 < digit-bit.patch # Update deprecated macro from ltm
 	$(Q) patch -p0 < ltcrypt-flush.patch # Missing stdout flush in demo app
+	$(Q) patch -p0 < hashsum-main.patch # Change main signature in hashsum demo app
 	$(Q) touch $(LIBTOMCRYPT_UNPACKNAME)
 
 context:: $(LIBTOMCRYPT_UNPACKNAME)
