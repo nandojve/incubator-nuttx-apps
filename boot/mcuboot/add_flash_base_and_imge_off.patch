@@ -1,0 +1,58 @@
+--- mcuboot/boot/nuttx/include/flash_map_backend/flash_map_backend.h
++++ mcuboot/boot/nuttx/include/flash_map_backend/flash_map_backend.h
+@@ -419,4 +419,21 @@ int flash_area_id_to_multi_image_slot(int image_index, int fa_id);
+ 
+ int flash_area_id_from_image_offset(uint32_t offset);
+ 
++/****************************************************************************
++ * Name: flash_area_id_from_image_offset
++ *
++ * Description:
++ *   Retrieve a memory-mapped flash device's base address.
++ *
++ * Input Parameters:
++ *   fa_id   - ID of the flash device whose info will be retrieved.
++ *
++ * Returned Value:
++ *   Returns 0 on success and the address will be stored in the value pointed
++ *   by ret, or an error code on failure.
++ *
++ ****************************************************************************/
++
++int flash_device_base(uint8_t fd_id, uintptr_t *ret);
++
+ #endif /* __BOOT_NUTTX_INCLUDE_FLASH_MAP_BACKEND_FLASH_MAP_BACKEND_H */
+--- mcuboot/boot/nuttx/main.c
++++ mcuboot/boot/nuttx/main.c
+@@ -52,10 +52,14 @@ static void do_boot(struct boot_rsp *rsp)
+   ret = flash_area_open(area_id, &flash_area);
+   assert(ret == OK);
+ 
++  ret = flash_device_base(rsp->br_flash_dev_id, &info.flash_base);
++  assert(ret == OK);
++
+   printf("Booting from %s...\n", flash_area->fa_mtd_path);
+ 
+-  info.path        = flash_area->fa_mtd_path;
+-  info.header_size = rsp->br_hdr->ih_hdr_size;
++  info.path         = flash_area->fa_mtd_path;
++  info.image_offset = flash_area->fa_off;
++  info.header_size  = rsp->br_hdr->ih_hdr_size;
+ 
+   flash_area_close(flash_area);
+ 
+--- mcuboot/boot/nuttx/src/flash_map_backend/flash_map_backend.c
++++ mcuboot/boot/nuttx/src/flash_map_backend/flash_map_backend.c
+@@ -159,6 +159,12 @@ static struct flash_device_s *g_flash_devices[] =
+  * Private Functions
+  ****************************************************************************/
+ 
++int flash_device_base(uint8_t fd_id, uintptr_t *ret)
++{
++    *ret = CONFIG_MCUBOOT_FLASH_DEVICE_BASE;
++    return 0;
++}
++
+ /****************************************************************************
+  * Name: lookup_flash_device_by_id
+  *

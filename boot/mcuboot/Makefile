@@ -97,6 +97,7 @@ $(MCUBOOT_UNPACK): $(MCUBOOT_TARBALL)
 	$(Q) echo "Unpacking: $(MCUBOOT_TARBALL) -> $(MCUBOOT_UNPACK)"
 	$(Q) tar zxf $(MCUBOOT_TARBALL)
 	$(Q) mv mcuboot-$(MCUBOOT_VERSION) $(MCUBOOT_UNPACK)
+	$(Q) patch -p0 < add_flash_base_and_imge_off.patch
 	$(Q) touch $(MCUBOOT_UNPACK)
 
 context:: $(MCUBOOT_UNPACK)

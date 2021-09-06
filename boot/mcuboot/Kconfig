@@ -7,6 +7,10 @@ menuconfig BOOT_MCUBOOT
 	bool "MCUboot"
 	default n
 	select BCH
+	select MTD
+	select MTD_BYTE_WRITE
+	select MTD_PARTITION
+	select MTD_PROGMEM
 	---help---
 		Enable support for the MCUboot bootloader.
 
@@ -42,6 +46,12 @@ config MCUBOOT_BOOTLOADER
 	select BOARDCTL_BOOT_IMAGE
 	---help---
 		MCUboot bootloader application.
+
+config MCUBOOT_FLASH_DEVICE_BASE
+	hex "MCUboot flash device base address"
+	default 0x400000
+	---help---
+		MCUboot flash device base address
 
 config MCUBOOT_UPDATE_AGENT_EXAMPLE
 	bool "MCUboot update agent example"
@@ -102,26 +112,26 @@ config MCUBOOT_WATCHDOG_DEVPATH
 
 config MCUBOOT_PRIMARY_SLOT_PATH
 	string "Application firmware image primary slot path"
-	default "/dev/ota0"
+	default "/dev/mtdfota0"
 	---help---
 		The path to the application firmware image primary slot character
 		device driver.
-		Default: /dev/ota0
+		Default: /dev/mtdfota0
 
 config MCUBOOT_SECONDARY_SLOT_PATH
 	string "Application firmware image secondary slot path"
-	default "/dev/ota1"
+	default "/dev/mtdfota1"
 	---help---
 		The path to the application firmware image secondary slot character
 		device driver.
-		Default: /dev/ota1
+		Default: /dev/mtdfota1
 
 config MCUBOOT_SCRATCH_PATH
 	string "Scratch partition path"
-	default "/dev/otascratch"
+	default "/dev/mtdswap0"
 	---help---
-		The path to the scratch partition character device driver.
-		Default: /dev/otascratch
+		The path to the swap partition character device driver.
+		Default: /dev/mtdswap0
 
 config MCUBOOT_DEFAULT_FLASH_ERASE_STATE
 	hex "Default flash erase state"
