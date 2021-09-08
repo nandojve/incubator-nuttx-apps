@@ -1,0 +1,28 @@
+--- mcuboot/boot/nuttx/main.c
++++ mcuboot/boot/nuttx/main.c
+@@ -29,6 +29,7 @@
+ 
+ #include <bootutil/bootutil.h>
+ #include <bootutil/image.h>
++#include <bootutil/bootutil_log.h>
+ 
+ #include "flash_map_backend/flash_map_backend.h"
+ 
+@@ -93,7 +94,17 @@ int main(int argc, FAR char *argv[])
+       FIH_PANIC;
+     }
+ 
++  BOOT_LOG_INF("Bootloader chainload address offset: 0x%x", rsp.br_image_off);
++
++#if defined(MCUBOOT_DIRECT_XIP)
++  BOOT_LOG_INF("Jumping to the image slot");
++#else
++  BOOT_LOG_INF("Jumping to the first image slot");
++#endif
++
+   do_boot(&rsp);
+ 
++  BOOT_LOG_ERR("Something went wrong, should not get here!");
++
+   while (1);
+ }
