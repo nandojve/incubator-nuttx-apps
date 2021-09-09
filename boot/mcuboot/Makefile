@@ -99,6 +99,7 @@ $(MCUBOOT_UNPACK): $(MCUBOOT_TARBALL)
 	$(Q) mv mcuboot-$(MCUBOOT_VERSION) $(MCUBOOT_UNPACK)
 	$(Q) patch -p0 < add_flash_base_and_imge_off.patch
 	$(Q) patch -p0 < add_init_status_logs.patch
+	$(Q) patch -p0 < allow_larger_min_flash_write.patch
 	$(Q) touch $(MCUBOOT_UNPACK)
 
 context:: $(MCUBOOT_UNPACK)

@@ -1,0 +1,276 @@
+--- mcuboot/boot/bootutil/include/bootutil/bootutil.h
++++ mcuboot/boot/bootutil/include/bootutil/bootutil.h
+@@ -36,6 +36,15 @@
+ extern "C" {
+ #endif
+ 
++#ifdef MCUBOOT_BOOT_MAX_ALIGN
++#define BOOT_MAX_ALIGN          MCUBOOT_BOOT_MAX_ALIGN
++#define BOOT_MAGIC_ALIGN_SIZE \
++    ((((BOOT_MAGIC_SZ - 1) / BOOT_MAX_ALIGN) + 1) * BOOT_MAX_ALIGN)
++#else
++#define BOOT_MAX_ALIGN          8
++#define BOOT_MAGIC_ALIGN_SIZE   BOOT_MAGIC_SZ
++#endif
++
+ struct image_header;
+ /**
+  * A response object provided by the boot loader code; indicates where to jump
+@@ -63,7 +72,10 @@ struct image_trailer {
+     uint8_t pad2[BOOT_MAX_ALIGN - 1];
+     uint8_t image_ok;
+     uint8_t pad3[BOOT_MAX_ALIGN - 1];
+-    uint8_t magic[16];
++#if BOOT_MAX_ALIGN > BOOT_MAGIC_SZ
++    uint8_t pad4[BOOT_MAGIC_ALIGN_SIZE - BOOT_MAGIC_SZ];
++#endif
++    uint8_t magic[BOOT_MAGIC_SZ];
+ };
+ 
+ /* you must have pre-allocated all the entries within this structure */
+--- mcuboot/boot/bootutil/include/bootutil/bootutil_public.h
++++ mcuboot/boot/bootutil/include/bootutil/bootutil_public.h
+@@ -71,8 +71,6 @@ extern "C" {
+ /** Swapping encountered an unrecoverable error */
+ #define BOOT_SWAP_TYPE_PANIC    0xff
+ 
+-#define BOOT_MAX_ALIGN          8
+-
+ #define BOOT_MAGIC_GOOD     1
+ #define BOOT_MAGIC_BAD      2
+ #define BOOT_MAGIC_UNSET    3
+@@ -87,7 +85,7 @@ extern "C" {
+ #define BOOT_FLAG_UNSET     3
+ #define BOOT_FLAG_ANY       4  /* NOTE: control only, not dependent on sector */
+ 
+-#define BOOT_MAGIC_SZ (sizeof boot_img_magic)
++#define BOOT_MAGIC_SZ   16
+ 
+ #define BOOT_EFLASH      1
+ #define BOOT_EFILE       2
+--- mcuboot/boot/bootutil/include/bootutil/enc_key.h
++++ mcuboot/boot/bootutil/include/bootutil/enc_key.h
+@@ -33,11 +33,14 @@
+ #include "bootutil/crypto/aes_ctr.h"
+ #include "bootutil/image.h"
+ #include "bootutil/enc_key_public.h"
++#include "bootutil/bootutil.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
++#define BOOT_ENC_KEY_ALIGN_SIZE \
++    ((((BOOT_ENC_KEY_SIZE - 1) / BOOT_MAX_ALIGN) + 1) * BOOT_MAX_ALIGN)
+ #define BOOT_ENC_KEY_SIZE_BITS  (BOOT_ENC_KEY_SIZE * 8)
+ 
+ #define BOOT_ENC_TLV_ALIGN_SIZE \
+--- mcuboot/boot/bootutil/src/bootutil_misc.c
++++ mcuboot/boot/bootutil/src/bootutil_misc.c
+@@ -51,6 +51,15 @@ extern const uint32_t boot_img_magic[];
+ #define BOOT_MAGIC_ARR_SZ \
+     (sizeof boot_img_magic / sizeof boot_img_magic[0])
+ 
++static int
++boot_magic_decode(const uint32_t *magic)
++{
++    if (memcmp(magic, boot_img_magic, BOOT_MAGIC_SZ) == 0) {
++        return BOOT_MAGIC_GOOD;
++    }
++    return BOOT_MAGIC_BAD;
++}
++
+ /**
+  * @brief Determine if the data at two memory addresses is equal
+  *
+@@ -111,12 +120,12 @@ boot_trailer_sz(uint32_t min_write_sz)
+ #  if MCUBOOT_SWAP_SAVE_ENCTLV
+            BOOT_ENC_TLV_ALIGN_SIZE * 2            +
+ #  else
+-           BOOT_ENC_KEY_SIZE * 2                  +
++           BOOT_ENC_KEY_ALIGN_SIZE * 2            +
+ #  endif
+ #endif
+            /* swap_type + copy_done + image_ok + swap_size */
+            BOOT_MAX_ALIGN * 4                     +
+-           BOOT_MAGIC_SZ;
++           BOOT_MAGIC_ALIGN_SIZE;
+ }
+ 
+ int
+@@ -157,7 +166,7 @@ boot_magic_off(const struct flash_area *fap)
+ static inline uint32_t
+ boot_image_ok_off(const struct flash_area *fap)
+ {
+-    return boot_magic_off(fap) - BOOT_MAX_ALIGN;
++    return (boot_magic_off(fap) - BOOT_MAX_ALIGN) & ~(BOOT_MAX_ALIGN - 1);
+ }
+ 
+ static inline uint32_t
+@@ -177,10 +186,9 @@ static inline uint32_t
+ boot_enc_key_off(const struct flash_area *fap, uint8_t slot)
+ {
+ #if MCUBOOT_SWAP_SAVE_ENCTLV
+-    return boot_swap_size_off(fap) - ((slot + 1) *
+-            ((((BOOT_ENC_TLV_SIZE - 1) / BOOT_MAX_ALIGN) + 1) * BOOT_MAX_ALIGN));
++    return boot_swap_size_off(fap) - ((slot + 1) * BOOT_ENC_TLV_ALIGN_SIZE);
+ #else
+-    return boot_swap_size_off(fap) - ((slot + 1) * BOOT_ENC_KEY_SIZE);
++    return boot_swap_size_off(fap) - ((slot + 1) * BOOT_ENC_KEY_ALIGN_SIZE);
+ #endif
+ }
+ #endif
+@@ -229,7 +237,7 @@ boot_find_status(int image_index, const struct flash_area **fap)
+             return rc;
+         }
+ 
+-        if (memcmp(magic, boot_img_magic, BOOT_MAGIC_SZ) == 0) {
++        if (BOOT_MAGIC_GOOD == boot_magic_decode(magic)) {
+             return 0;
+         }
+ 
+--- mcuboot/boot/bootutil/src/bootutil_priv.h
++++ mcuboot/boot/bootutil/src/bootutil_priv.h
+@@ -109,16 +109,24 @@ struct boot_status {
+  *  |                 Encryption key 0 (16 octets) [*]              |
+  *  |                                                               |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++ *  |  0xff padding as needed (BOOT_MAX_ALIGN - 16 EK0 octets) [*]  |
++ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  *  |                 Encryption key 1 (16 octets) [*]              |
+  *  |                                                               |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++ *  |  0xff padding as needed (BOOT_MAX_ALIGN - 16 EK1 octets) [*]  |
++ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  *  |                      Swap size (4 octets)                     |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+- *  |   Swap info   |           0xff padding (7 octets)             |
++ *  | 0xff padding as needed (BOOT_MAX_ALIGN - 4 Swap Size octets)  |
++ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++ *  |   Swap info   |   0xff padding (BOOT_MAX_ALIGN - 1 octets)    |
++ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++ *  |   Copy done   |   0xff padding (BOOT_MAX_ALIGN - 1 octets)    |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+- *  |   Copy done   |           0xff padding (7 octets)             |
++ *  |   Image OK    |   0xff padding (BOOT_MAX_ALIGN - 1 octets)    |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+- *  |   Image OK    |           0xff padding (7 octets)             |
++ *  |   0xff padding as needed (BOOT_MAX_ALIGN - 16 MAGIC octets)   |
+  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  *  |                       MAGIC (16 octets)                       |
+  *  |                                                               |
+--- mcuboot/boot/bootutil/src/bootutil_public.c
++++ mcuboot/boot/bootutil/src/bootutil_public.c
+@@ -44,6 +44,7 @@
+ #include "flash_map_backend/flash_map_backend.h"
+ 
+ #include "bootutil/image.h"
++#include "bootutil/bootutil.h"
+ #include "bootutil/bootutil_public.h"
+ #include "bootutil/bootutil_log.h"
+ #ifdef MCUBOOT_ENC_IMAGES
+--- mcuboot/boot/zephyr/include/mcuboot_config/mcuboot_config.h
++++ mcuboot/boot/zephyr/include/mcuboot_config/mcuboot_config.h
+@@ -20,6 +20,10 @@
+  */
+ #ifndef __BOOTSIM__
+ 
++#ifdef CONFIG_MCUBOOT_BOOT_MAX_ALIGN
++#define MCUBOOT_BOOT_MAX_ALIGN CONFIG_MCUBOOT_BOOT_MAX_ALIGN
++#endif
++
+ #ifdef CONFIG_BOOT_SIGNATURE_TYPE_RSA
+ #define MCUBOOT_SIGN_RSA
+ #  if (CONFIG_BOOT_SIGNATURE_TYPE_RSA_LEN != 2048 && \
+--- mcuboot/scripts/imgtool/image.py
++++ mcuboot/scripts/imgtool/image.py
+@@ -43,7 +43,7 @@ IMAGE_HEADER_SIZE = 32
+ BIN_EXT = "bin"
+ INTEL_HEX_EXT = "hex"
+ DEFAULT_MAX_SECTORS = 128
+-MAX_ALIGN = 8
++DEFAULT_MAX_ALIGN = 8
+ DEP_IMAGES_KEY = "images"
+ DEP_VERSIONS_KEY = "versions"
+ MAX_SW_TYPE_LENGTH = 12  # Bytes
+@@ -158,6 +158,7 @@ class Image():
+         self.enckey = None
+         self.save_enctlv = save_enctlv
+         self.enctlv_len = 0
++        self.max_align = DEFAULT_MAX_ALIGN if align <= DEFAULT_MAX_ALIGN else int(align)
+ 
+         if security_counter == 'auto':
+             # Security counter has not been explicitly provided,
+@@ -231,9 +232,12 @@ class Image():
+                 trailer_addr = (self.base_addr + self.slot_size) - trailer_size
+                 padding = bytearray([self.erased_val] * 
+                                     (trailer_size - len(boot_magic)))
+-                if self.confirm and not self.overwrite_only:
+-                    padding[-MAX_ALIGN] = 0x01  # image_ok = 0x01
+                 padding += boot_magic
++                if self.confirm and not self.overwrite_only:
++                    magic_size = 16
++                    magic_align_size = (int((magic_size - 1) / self.max_align) + 1) * self.max_align
++                    image_ok_idx = -(magic_align_size + self.max_align)
++                    padding[image_ok_idx] = 0x01  # image_ok = 0x01
+                 h.puts(trailer_addr, bytes(padding))
+             h.tofile(path, 'hex')
+         else:
+@@ -517,10 +521,11 @@ class Image():
+                       save_enctlv, enctlv_len):
+         # NOTE: should already be checked by the argument parser
+         magic_size = 16
++        magic_align_size = (int((magic_size - 1) / self.max_align) + 1) * self.max_align
+         if overwrite_only:
+-            return MAX_ALIGN * 2 + magic_size
++            return self.max_align * 2 + magic_align_size
+         else:
+-            if write_size not in set([1, 2, 4, 8]):
++            if write_size not in set([1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]):
+                 raise click.BadParameter("Invalid alignment: {}".format(
+                     write_size))
+             m = DEFAULT_MAX_SECTORS if max_sectors is None else max_sectors
+@@ -528,12 +533,12 @@ class Image():
+             if enckey is not None:
+                 if save_enctlv:
+                     # TLV saved by the bootloader is aligned
+-                    keylen = (int((enctlv_len - 1) / MAX_ALIGN) + 1) * MAX_ALIGN
++                    keylen = (int((enctlv_len - 1) / self.max_align) + 1) * self.max_align
+                 else:
+-                    keylen = 16
++                    keylen = (int((16 - 1) / self.max_align) + 1) * self.max_align
+                 trailer += keylen * 2  # encryption keys
+-            trailer += MAX_ALIGN * 4  # image_ok/copy_done/swap_info/swap_size
+-            trailer += magic_size
++            trailer += self.max_align * 4  # image_ok/copy_done/swap_info/swap_size
++            trailer += magic_align_size
+             return trailer
+ 
+     def pad_to(self, size):
+@@ -544,9 +549,12 @@ class Image():
+         padding = size - (len(self.payload) + tsize)
+         pbytes = bytearray([self.erased_val] * padding)
+         pbytes += bytearray([self.erased_val] * (tsize - len(boot_magic)))
+-        if self.confirm and not self.overwrite_only:
+-            pbytes[-MAX_ALIGN] = 0x01  # image_ok = 0x01
+         pbytes += boot_magic
++        if self.confirm and not self.overwrite_only:
++            magic_size = 16
++            magic_align_size = (int((magic_size - 1) / self.max_align) + 1) * self.max_align
++            image_ok_idx = -(magic_align_size + self.max_align)
++            pbytes[image_ok_idx] = 0x01  # image_ok = 0x01
+         self.payload += pbytes
+ 
+     @staticmethod
+--- mcuboot/scripts/imgtool/main.py
++++ mcuboot/scripts/imgtool/main.py
+@@ -288,7 +288,8 @@ class BasedIntParamType(click.ParamType):
+               help='Specify the value of security counter. Use the `auto` '
+               'keyword to automatically generate it from the image version.')
+ @click.option('-v', '--version', callback=validate_version,  required=True)
+-@click.option('--align', type=click.Choice(['1', '2', '4', '8']),
++@click.option('--align', type=click.Choice(['1', '2', '4', '8', '16', '32',
++              '64', '128', '256', '512', '1024', '2048', '4096']),
+               required=True)
+ @click.option('--public-key-format', type=click.Choice(['hash', 'full']),
+               default='hash', help='In what format to add the public key to '
